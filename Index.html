@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Rocket</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+html,body{
+  margin:0;
+  overflow:hidden;
+  background:black;
+  font-family:'Orbitron',sans-serif;
+}
+canvas{display:block}
+#ui{
+  position:fixed; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  pointer-events:none;
+}
+.panel{
+  background:rgba(5,8,20,.95);
+  border:4px solid #00f6ff;
+  box-shadow:0 0 60px #00f6ff;
+  padding:40px 55px;
+  text-align:center;
+  pointer-events:auto;
+}
+h1{
+  font-size:56px;
+  margin:0 0 12px;
+  text-shadow:0 0 50px #00f6ff;
+}
+button,select{
+  margin-top:18px;
+  padding:14px 34px;
+  font-size:22px;
+  font-family:'Orbitron',sans-serif;
+  background:black;
+  color:#00f6ff;
+  border:3px solid #00f6ff;
+  cursor:pointer;
+}
+button:hover{background:#00f6ff;color:black}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div class="panel" id="menu">
+    <h1>NEON ROCKET</h1>
+    <div style="font-size:24px">High Score: <span id="hi">0</span></div>
+    <select id="diff">
+      <option value="easy">Easy</option>
+      <option value="normal" selected>Normal</option>
+      <option value="hard">Hard</option>
+    </select><br>
+    <button onclick="start()">START</button>
+  </div>
+
+  <div class="panel" id="over" style="display:none">
+    <h1>GAME OVER</h1>
+    <div style="font-size:30px">Score: <span id="fs">0</span></div>
+    <div style="font-size:24px">High Score: <span id="fh">0</span></div>
+    <button onclick="reset()">RESTART</button>
+  </div>
+</div>
+
+<script>
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+function resize(){c.width=innerWidth;c.height=innerHeight}
+addEventListener("resize",resize);resize();
+
+// ✅ HIGH SCORE (FIXED)
+let hi = Number(localStorage.getItem("nr-hi")) || 0;
+document.getElementById("hi").textContent = hi;
+
+let state="menu",score=0,frame=0,shake=0;
+const cam=()=>({x:(Math.random()-.5)*shake,y:(Math.random()-.5)*shake});
+
+// 🌟 STARFIELD
+const stars=[...Array(1200)].map(()=>({
+  x:Math.random()*c.width,
+  y:Math.random()*c.height,
+  z:Math.random()*3+1
+}));
+
+// 🌌 NEBULA
+const nebulae=[...Array(6)].map(()=>({
+  x:Math.random()*c.width,
+  y:Math.random()*c.height,
+  r:300+Math.random()*300,
+  c:`hsla(${Math.random()*360},80%,60%,0.15)`
+}));
+
+// 🪐 PLANETS
+const planets=[
+  {x:.8,y:.25,r:200,color:"#5b6cff"},
+  {x:.25,y:.75,r:140,color:"#ff5b9d"}
+];
+
+// 🚀 ROCKET
+const r={x:220,y:300,vy:0,a:0,thrust:false};
+
+// ⚙️ DIFFICULTY
+let g,t,speed,gap;
+function setDiff(d){
+ if(d==="easy"){g=.45;t=-7.5;speed=4;gap=260}
+ if(d==="normal"){g=.65;t=-9;speed=6;gap=220}
+ if(d==="hard"){g=.9;t=-11;speed=8;gap=180}
+}
+
+let pipes=[];
+
+function start(){
+ setDiff(diff.value);
+ state="play";score=0;frame=0;pipes=[];
+ r.y=c.height/2;r.vy=0;
+ menu.style.display="none";
+}
+
+function reset(){
+ over.style.display="none";
+ menu.style.display="block";
+ state="menu";
+}
+
+function die(){
+ if(state!=="play")return;
+ state="dead"; shake=45;
+
+ if(score > hi){
+   hi = score;
+   localStorage.setItem("nr-hi", hi);
+ }
+
+ setTimeout(()=>{
+  fs.textContent = score;
+  fh.textContent = hi;
+  document.getElementById("hi").textContent = hi;
+  over.style.display="block";
+ },600);
+}
+
+addEventListener("keydown",e=>e.code==="Space"&&jump());
+addEventListener("keyup",()=>r.thrust=false);
+addEventListener("mousedown",jump);
+addEventListener("mouseup",()=>r.thrust=false);
+
+function jump(){
+ if(state==="play"){r.vy=t;r.thrust=true}
+}
+
+// 🌌 SPACE
+function drawSpace(){
+ const gbg=ctx.createRadialGradient(
+  c.width*.3,c.height*.3,0,
+  c.width*.5,c.height*.5,c.width
+ );
+ gbg.addColorStop(0,"#0a0f3a");
+ gbg.addColorStop(.5,"#050714");
+ gbg.addColorStop(1,"#000");
+ ctx.fillStyle=gbg;
+ ctx.fillRect(0,0,c.width,c.height);
+
+ for(const n of nebulae){
+  ctx.fillStyle=n.c;
+  ctx.beginPath();
+  ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
+  ctx.fill();
+ }
+
+ for(const s of stars){
+  s.x-=speed*(s.z*.15);
+  if(s.x<0)s.x=c.width;
+  ctx.fillStyle=`rgba(255,255,255,${.3+.2*s.z})`;
+  ctx.fillRect(s.x,s.y,s.z,s.z);
+ }
+
+ for(const p of planets){
+  const x=p.x*c.width,y=p.y*c.height;
+  const grd=ctx.createRadialGradient(
+    x-p.r*.4,y-p.r*.4,p.r*.2,
+    x,y,p.r
+  );
+  grd.addColorStop(0,"#fff");
+  grd.addColorStop(.4,p.color);
+  grd.addColorStop(1,"#000");
+  ctx.fillStyle=grd;
+  ctx.beginPath();
+  ctx.arc(x,y,p.r,0,Math.PI*2);
+  ctx.fill();
+ }
+}
+
+// 🚧 PIPES
+function drawPipes(){
+ for(const p of pipes){
+  ctx.fillStyle="#1a1f2e";
+  ctx.fillRect(p.x,0,130,p.top);
+  ctx.fillRect(p.x,p.top+gap,130,c.height);
+  ctx.fillStyle="#00f6ff";
+  ctx.fillRect(p.x+110,0,6,p.top);
+  ctx.fillRect(p.x+110,p.top+gap,6,c.height);
+ }
+}
+
+function addPipe(){
+ pipes.push({
+  x:c.width+200,
+  top:Math.random()*(c.height-gap-280)+140,
+  pass:false
+ });
+}
+
+// 🚀 ROCKET
+function drawRocket(){
+ ctx.save();
+ ctx.translate(r.x,r.y);
+ ctx.rotate(r.a);
+
+ ctx.fillStyle="#cfd3ff";
+ ctx.fillRect(-35,-10,70,20);
+
+ ctx.fillStyle="#ff3355";
+ ctx.beginPath();
+ ctx.moveTo(35,-10);
+ ctx.lineTo(55,0);
+ ctx.lineTo(35,10);
+ ctx.fill();
+
+ ctx.fillStyle="#889";
+ ctx.fillRect(-20,10,12,10);
+ ctx.fillRect(-20,-20,12,-10);
+
+ ctx.fillStyle="#444";
+ ctx.fillRect(-40,-8,10,16);
+
+ if(r.thrust){
+  ctx.fillStyle="#ffaa00";
+  ctx.beginPath();
+  ctx.moveTo(-40,-6);
+  ctx.lineTo(-65-Math.random()*10,0);
+  ctx.lineTo(-40,6);
+  ctx.fill();
+ }
+ ctx.restore();
+}
+
+// 🔁 LOOP
+function loop(){
+ ctx.clearRect(0,0,c.width,c.height);
+ const o=cam();ctx.save();ctx.translate(o.x,o.y);
+
+ drawSpace();
+
+ if(state==="play"){
+  frame++;
+  r.vy+=g;
+  r.y+=r.vy;
+  r.a+=((r.vy/12)-r.a)*.12;
+
+  if(frame%90===0)addPipe();
+
+  for(const p of pipes){
+   p.x-=speed;
+   if(!p.pass&&p.x+130<r.x){
+    p.pass=true;score++;
+   }
+   if(r.x+24>p.x&&r.x-24<p.x+130&&(r.y<p.top||r.y>p.top+gap))
+    die();
+  }
+  pipes=pipes.filter(p=>p.x>-200);
+  if(r.y<0||r.y>c.height)die();
+ }
+
+ drawPipes();
+ drawRocket();
+
+ if(state==="play"){
+  ctx.fillStyle="white";
+  ctx.font="52px Orbitron";
+  ctx.fillText(score,c.width/2-12,80);
+ }
+
+ ctx.restore();
+ shake=Math.max(0,shake-1);
+ requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
